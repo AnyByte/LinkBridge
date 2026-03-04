@@ -22,18 +22,21 @@ int midi_init(void) {
     snd_seq_queue_tempo_t *queue_tempo;
     
     // Open ALSA sequencer
-    err = snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_OUTPUT, 0);
+    err = snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_DUPLEX, 0);
     if (err < 0) {
         fprintf(stderr, "Error opening ALSA sequencer: %s\n", snd_strerror(err));
         return -1;
     }
     
+    // Set non-blocking mode so snd_seq_event_input() doesn't hang
+    snd_seq_nonblock(seq_handle, 1);
+
     // Set client name
     snd_seq_set_client_name(seq_handle, "Python MIDI Clock");
     
     // Create output port
     port_id = snd_seq_create_simple_port(seq_handle, "MIDI Clock Out",
-                                          SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ,
+                                          SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ | SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE,
                                           SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
     if (port_id < 0) {
         fprintf(stderr, "Error creating port: %s\n", snd_strerror(port_id));
@@ -41,6 +44,19 @@ int midi_init(void) {
         seq_handle = NULL;
         return -1;
     }
+
+    /* Subscribe to system announce */
+    if ((err = snd_seq_connect_from(
+            seq_handle,
+            port_id,
+            SND_SEQ_CLIENT_SYSTEM,
+            SND_SEQ_PORT_SYSTEM_ANNOUNCE)) < 0) {
+        fprintf(stderr, "Cannot subscribe to system announce: %s\n",
+                snd_strerror(err));
+        exit(1);
+    }
+
+    printf("Listening for PORT_START events...\n");
     
     // Create queue
     queue_id = snd_seq_alloc_queue(seq_handle);
@@ -237,4 +253,60 @@ int midi_get_port_id(void) {
 // Get queue ID
 int midi_get_queue_id(void) {
     return queue_id;
+}
+
+// Check if the MIDI port is able to receive MIDI messages
+static int has_read_capability(snd_seq_t *seq, int client, int port)
+{
+    snd_seq_port_info_t *pinfo;
+    snd_seq_port_info_alloca(&pinfo);
+
+    if (snd_seq_get_any_port_info(seq, client, port, pinfo) < 0)
+        return 0;
+
+    unsigned int caps = snd_seq_port_info_get_capability(pinfo);
+
+    return (caps & SND_SEQ_PORT_CAP_READ) &&
+           (caps & SND_SEQ_PORT_CAP_SUBS_READ);
+}
+
+// Poll ALSA sequencer events for PORT_START when a new MIDI device is connected
+int midi_read_events(void) {
+    if (seq_handle == NULL) {
+        fprintf(stderr, "Error: MIDI not initialized\n");
+        return -1;
+    }
+
+    snd_seq_event_t *event;
+    int count = 0;
+    
+    // Non-blocking event read loop
+    while (snd_seq_event_input(seq_handle, &event) > 0) {
+        if (event->type == SND_SEQ_EVENT_PORT_START) {
+            // Handle new port detection here for auto-connect
+
+            int client = event->data.addr.client;
+            int port   = event->data.addr.port;
+
+            /* Ignore ourselves */
+            if (client == snd_seq_client_id(seq_handle))
+                continue;
+
+            printf("New port: %d:%d\n", client, port);
+
+            if (has_read_capability(seq_handle, client, port)) {
+
+                printf("Connecting %d:%d -> alma\n", client, port);
+
+                snd_seq_connect_from(
+                    seq_handle,
+                    port_id,
+                    client,
+                    port);
+            }
+        }
+        count++;
+    }
+    
+    return count;
 }

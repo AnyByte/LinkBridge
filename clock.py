@@ -87,6 +87,7 @@ def main():
     midi_lib.midi_get_client_id.restype = ctypes.c_int
     midi_lib.midi_get_port_id.restype = ctypes.c_int
     midi_lib.midi_get_queue_id.restype = ctypes.c_int
+    midi_lib.midi_read_events.restype = ctypes.c_int
     midi_lib.midi_cleanup.restype = None
     # Expose tempo setter from C library
     midi_lib.midi_set_tempo.restype = ctypes.c_int
@@ -186,6 +187,9 @@ def main():
                 queue_tick = midi_lib.midi_get_tick_count()
                 print(f"[Python] Beat {beat_count:4d} | MIDI Tick {tick_count:6d} | Queue Tick {queue_tick:6d}")
             
+            # Check for new MIDI ports available
+            numberOfHandledEvents = midi_lib.midi_read_events()
+
             # Sleep until next tick using absolute time to prevent drift
             next_tick_time += tick_interval
             sleep_time = next_tick_time - time.monotonic()
