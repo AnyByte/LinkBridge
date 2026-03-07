@@ -5,8 +5,8 @@ After=network.target
 [Service]
 User=admin
 Group=admin
-WorkingDirectory=/home/admin/linkbridge
-ExecStart=/home/admin/linkbridge/venv/bin/python /home/admin/linkbridge/clock.py
+WorkingDirectory=/home/barnabas/LinkBridge-main
+ExecStart=/home/barnabas/LinkBridge-main/venv/bin/python /home/barnabas/LinkBridge-main/clock.py
 Restart=always
 RestartSec=5
 Environment="PYTHONUNBUFFERED=1"

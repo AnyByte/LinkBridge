@@ -11,9 +11,61 @@ static snd_seq_t *seq_handle = NULL;
 static int port_id = -1;
 static int queue_id = -1;
 static snd_seq_tick_time_t current_queue_tick = 0;
+static char virtualMidiPortName[] = "LinkBridge MIDI Clock";
 /* highest tick we've scheduled so far (used to place tempo changes after all
     previously queued events) */
 static snd_seq_tick_time_t max_scheduled_tick = 0;
+
+// Forward declarations
+static int has_write_capability(snd_seq_t *seq, int client, int port);
+// static int has_read_capability(snd_seq_t *seq, int client, int port);
+
+// Connect to all existing MIDI ports on startup (except ports 0 and 14)
+static void midi_connect_all_ports(void) {
+    if (seq_handle == NULL)
+        return;
+
+    snd_seq_client_info_t *cinfo;
+    snd_seq_port_info_t *pinfo;
+    int client;
+    
+    snd_seq_client_info_alloca(&cinfo);
+    snd_seq_port_info_alloca(&pinfo);
+    
+    snd_seq_client_info_set_client(cinfo, -1);
+        
+    // Iterate through all clients
+    while (snd_seq_query_next_client(seq_handle, cinfo) >= 0) {
+        client = snd_seq_client_info_get_client(cinfo);
+        
+        // Ignore ourselves
+        if (client == snd_seq_client_id(seq_handle))
+            continue;
+
+        // Ignore System and Midi Throught devices
+        if (client == 0 || client == 14)
+            continue;
+        
+        snd_seq_port_info_set_client(pinfo, client);
+        snd_seq_port_info_set_port(pinfo, -1);
+        
+        // Iterate through all ports of this client
+        while (snd_seq_query_next_port(seq_handle, pinfo) >= 0) {
+            int port = snd_seq_port_info_get_port(pinfo);
+            
+            
+            if (has_write_capability(seq_handle, client, port)) {
+                printf("Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
+                snd_seq_connect_to(seq_handle, port_id, client, port);
+            }
+            
+            // if (has_read_capability(seq_handle, client, port)) {
+            //     printf("Connecting %d:%d -> %s\n", client, port, virtualMidiPortName);
+            //     snd_seq_connect_from(seq_handle, port_id, client, port);
+            // }
+        }
+    }
+}
 
 // Initialize ALSA sequencer, create port and queue
 // Returns 0 on success, -1 on error
@@ -32,7 +84,7 @@ int midi_init(void) {
     snd_seq_nonblock(seq_handle, 1);
 
     // Set client name
-    snd_seq_set_client_name(seq_handle, "Python MIDI Clock");
+    snd_seq_set_client_name(seq_handle, virtualMidiPortName);
     
     // Create output port
     port_id = snd_seq_create_simple_port(seq_handle, "MIDI Clock Out",
@@ -85,6 +137,9 @@ int midi_init(void) {
            snd_seq_client_id(seq_handle), port_id, queue_id);
     
     current_queue_tick = 0;
+    
+    // Connect to all existing MIDI ports on startup
+    midi_connect_all_ports();
     
     return 0;
 }
@@ -255,8 +310,8 @@ int midi_get_queue_id(void) {
     return queue_id;
 }
 
-// Check if the MIDI port is able to receive MIDI messages
-static int has_read_capability(snd_seq_t *seq, int client, int port)
+// Check if the MIDI port is able to send MIDI messages (for us to send data to)
+static int has_write_capability(snd_seq_t *seq, int client, int port)
 {
     snd_seq_port_info_t *pinfo;
     snd_seq_port_info_alloca(&pinfo);
@@ -266,9 +321,24 @@ static int has_read_capability(snd_seq_t *seq, int client, int port)
 
     unsigned int caps = snd_seq_port_info_get_capability(pinfo);
 
-    return (caps & SND_SEQ_PORT_CAP_READ) &&
-           (caps & SND_SEQ_PORT_CAP_SUBS_READ);
+    return (caps & SND_SEQ_PORT_CAP_WRITE) &&
+           (caps & SND_SEQ_PORT_CAP_SUBS_WRITE);
 }
+
+// // Check if the MIDI port is able to receive MIDI messages
+// static int has_read_capability(snd_seq_t *seq, int client, int port)
+// {
+//     snd_seq_port_info_t *pinfo;
+//     snd_seq_port_info_alloca(&pinfo);
+
+//     if (snd_seq_get_any_port_info(seq, client, port, pinfo) < 0)
+//         return 0;
+
+//     unsigned int caps = snd_seq_port_info_get_capability(pinfo);
+
+//     return (caps & SND_SEQ_PORT_CAP_READ) &&
+//            (caps & SND_SEQ_PORT_CAP_SUBS_READ);
+// }
 
 // Poll ALSA sequencer events for PORT_START when a new MIDI device is connected
 int midi_read_events(void) {
@@ -294,16 +364,27 @@ int midi_read_events(void) {
 
             printf("New port: %d:%d\n", client, port);
 
-            if (has_read_capability(seq_handle, client, port)) {
+            if (has_write_capability(seq_handle, client, port)) {
 
-                printf("Connecting %d:%d -> alma\n", client, port);
+                printf("Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
 
-                snd_seq_connect_from(
+                snd_seq_connect_to(
                     seq_handle,
                     port_id,
                     client,
                     port);
             }
+
+            // if (has_read_capability(seq_handle, client, port)) {
+
+            //     printf("Connecting %d:%d -> %s\n", client, port,virtualMidiPortName);
+
+            //     snd_seq_connect_from(
+            //         seq_handle,
+            //         port_id,
+            //         client,
+            //         port);
+            // }
         }
         count++;
     }
