@@ -6,6 +6,12 @@
 #define PPQN 24
 #define QUEUE_TEMPO_PPQ 96
 
+// Event callback type - called when MIDI events are received
+// event_type: one of the SND_SEQ_EVENT_* constants
+// channel: MIDI channel (0-15)
+// param1, param2, param3: event-specific parameters
+typedef void (*midi_event_callback_t)(int event_type, int channel, int param1, int param2, int param3);
+
 // Global handles
 static snd_seq_t *seq_handle = NULL;
 static int port_id = -1;
@@ -16,9 +22,21 @@ static char virtualMidiPortName[] = "LinkBridge MIDI Clock";
     previously queued events) */
 static snd_seq_tick_time_t max_scheduled_tick = 0;
 
+// Global callback function pointer
+static midi_event_callback_t event_callback = NULL;
+
 // Forward declarations
 static int has_write_capability(snd_seq_t *seq, int client, int port);
-// static int has_read_capability(snd_seq_t *seq, int client, int port);
+static int has_read_capability(snd_seq_t *seq, int client, int port);
+
+// Register a callback function for MIDI events
+// Call this from Python to set up the event handler
+void midi_register_event_callback(midi_event_callback_t callback) {
+    event_callback = callback;
+    if (callback != NULL) {
+        printf("[C] MIDI event callback registered\n");
+    }
+}
 
 // Connect to all existing MIDI ports on startup (except ports 0 and 14)
 static void midi_connect_all_ports(void) {
@@ -55,14 +73,14 @@ static void midi_connect_all_ports(void) {
             
             
             if (has_write_capability(seq_handle, client, port)) {
-                printf("Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
+                printf("[C] Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
                 snd_seq_connect_to(seq_handle, port_id, client, port);
             }
             
-            // if (has_read_capability(seq_handle, client, port)) {
-            //     printf("Connecting %d:%d -> %s\n", client, port, virtualMidiPortName);
-            //     snd_seq_connect_from(seq_handle, port_id, client, port);
-            // }
+            if (has_read_capability(seq_handle, client, port)) {
+                printf("[C] Connecting %d:%d -> %s\n", client, port, virtualMidiPortName);
+                snd_seq_connect_from(seq_handle, port_id, client, port);
+            }
         }
     }
 }
@@ -72,11 +90,11 @@ static void midi_connect_all_ports(void) {
 int midi_init(void) {
     int err;
     snd_seq_queue_tempo_t *queue_tempo;
-    
-    // Open ALSA sequencer
+        printf("[C] Initializing MIDI subsystem...\n");
+        // Open ALSA sequencer
     err = snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_DUPLEX, 0);
     if (err < 0) {
-        fprintf(stderr, "Error opening ALSA sequencer: %s\n", snd_strerror(err));
+        fprintf(stderr, "[C] Error opening ALSA sequencer: %s\n", snd_strerror(err));
         return -1;
     }
     
@@ -91,7 +109,7 @@ int midi_init(void) {
                                           SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ | SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE,
                                           SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
     if (port_id < 0) {
-        fprintf(stderr, "Error creating port: %s\n", snd_strerror(port_id));
+        fprintf(stderr, "[C] Error creating port: %s\n", snd_strerror(port_id));
         snd_seq_close(seq_handle);
         seq_handle = NULL;
         return -1;
@@ -103,17 +121,17 @@ int midi_init(void) {
             port_id,
             SND_SEQ_CLIENT_SYSTEM,
             SND_SEQ_PORT_SYSTEM_ANNOUNCE)) < 0) {
-        fprintf(stderr, "Cannot subscribe to system announce: %s\n",
+        fprintf(stderr, "[C] Cannot subscribe to system announce: %s\n",
                 snd_strerror(err));
         exit(1);
     }
 
-    printf("Listening for PORT_START events...\n");
+    printf("[C] Listening for PORT_START events...\n");
     
     // Create queue
     queue_id = snd_seq_alloc_queue(seq_handle);
     if (queue_id < 0) {
-        fprintf(stderr, "Error creating queue: %s\n", snd_strerror(queue_id));
+        fprintf(stderr, "[C] Error creating queue: %s\n", snd_strerror(queue_id));
         snd_seq_close(seq_handle);
         seq_handle = NULL;
         return -1;
@@ -126,7 +144,7 @@ int midi_init(void) {
     snd_seq_queue_tempo_set_ppq(queue_tempo, QUEUE_TEMPO_PPQ);
     err = snd_seq_set_queue_tempo(seq_handle, queue_id, queue_tempo);
     if (err < 0) {
-        fprintf(stderr, "Error setting queue tempo: %s\n", snd_strerror(err));
+        fprintf(stderr, "[C] Error setting queue tempo: %s\n", snd_strerror(err));
         snd_seq_free_queue(seq_handle, queue_id);
         snd_seq_close(seq_handle);
         seq_handle = NULL;
@@ -150,11 +168,11 @@ int midi_init(void) {
 // Returns 0 on success, -1 on error
 int midi_set_tempo(int bpm10) {
     if (seq_handle == NULL) {
-        fprintf(stderr, "Error: MIDI not initialized\n");
+        fprintf(stderr, "[C] Error: MIDI not initialized\n");
         return -1;
     }
     if (bpm10 <= 0) {
-        fprintf(stderr, "Error: invalid BPM (tenths) %d\n", bpm10);
+        fprintf(stderr, "[C] Error: invalid BPM (tenths) %d\n", bpm10);
         return -1;
     }
 
@@ -187,7 +205,7 @@ int midi_set_tempo(int bpm10) {
 
     int err = snd_seq_event_output(seq_handle, &ev);
     if (err < 0) {
-        fprintf(stderr, "Error enqueuing tempo event: %s\n", snd_strerror(err));
+        fprintf(stderr, "[C] Error enqueuing tempo event: %s\n", snd_strerror(err));
         return -1;
     }
     snd_seq_drain_output(seq_handle);
@@ -201,7 +219,7 @@ int midi_set_tempo(int bpm10) {
 // Returns 0 on success, -1 on error
 int midi_send_start(void) {
     if (seq_handle == NULL) {
-        fprintf(stderr, "Error: MIDI not initialized\n");
+        fprintf(stderr, "[C] Error: MIDI not initialized\n");
         return -1;
     }
     
@@ -230,7 +248,7 @@ int midi_send_start(void) {
 // Returns 0 on success, -1 on error
 int midi_send_clock(void) {
     if (seq_handle == NULL) {
-        fprintf(stderr, "Error: MIDI not initialized\n");
+        fprintf(stderr, "[C] Error: MIDI not initialized\n");
         return -1;
     }
     
@@ -255,7 +273,7 @@ int midi_send_clock(void) {
 // Returns 0 on success, -1 on error
 int midi_send_stop(void) {
     if (seq_handle == NULL) {
-        fprintf(stderr, "Error: MIDI not initialized\n");
+        fprintf(stderr, "[C] Error: MIDI not initialized\n");
         return -1;
     }
     
@@ -325,25 +343,25 @@ static int has_write_capability(snd_seq_t *seq, int client, int port)
            (caps & SND_SEQ_PORT_CAP_SUBS_WRITE);
 }
 
-// // Check if the MIDI port is able to receive MIDI messages
-// static int has_read_capability(snd_seq_t *seq, int client, int port)
-// {
-//     snd_seq_port_info_t *pinfo;
-//     snd_seq_port_info_alloca(&pinfo);
+// Check if the MIDI port is able to receive MIDI messages
+static int has_read_capability(snd_seq_t *seq, int client, int port)
+{
+    snd_seq_port_info_t *pinfo;
+    snd_seq_port_info_alloca(&pinfo);
 
-//     if (snd_seq_get_any_port_info(seq, client, port, pinfo) < 0)
-//         return 0;
+    if (snd_seq_get_any_port_info(seq, client, port, pinfo) < 0)
+        return 0;
 
-//     unsigned int caps = snd_seq_port_info_get_capability(pinfo);
+    unsigned int caps = snd_seq_port_info_get_capability(pinfo);
 
-//     return (caps & SND_SEQ_PORT_CAP_READ) &&
-//            (caps & SND_SEQ_PORT_CAP_SUBS_READ);
-// }
+    return (caps & SND_SEQ_PORT_CAP_READ) &&
+           (caps & SND_SEQ_PORT_CAP_SUBS_READ);
+}
 
 // Poll ALSA sequencer events for PORT_START when a new MIDI device is connected
 int midi_read_events(void) {
     if (seq_handle == NULL) {
-        fprintf(stderr, "Error: MIDI not initialized\n");
+        fprintf(stderr, "[C] Error: MIDI not initialized\n");
         return -1;
     }
 
@@ -362,11 +380,11 @@ int midi_read_events(void) {
             if (client == snd_seq_client_id(seq_handle))
                 continue;
 
-            printf("New port: %d:%d\n", client, port);
+            printf("[C] New port: %d:%d\n", client, port);
 
             if (has_write_capability(seq_handle, client, port)) {
 
-                printf("Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
+                printf("[C] Connecting %s -> %d:%d\n", virtualMidiPortName, client, port);
 
                 snd_seq_connect_to(
                     seq_handle,
@@ -375,16 +393,79 @@ int midi_read_events(void) {
                     port);
             }
 
-            // if (has_read_capability(seq_handle, client, port)) {
+            if (has_read_capability(seq_handle, client, port)) {
 
-            //     printf("Connecting %d:%d -> %s\n", client, port,virtualMidiPortName);
+                printf("[C] Connecting %d:%d -> %s\n", client, port,virtualMidiPortName);
 
-            //     snd_seq_connect_from(
-            //         seq_handle,
-            //         port_id,
-            //         client,
-            //         port);
-            // }
+                snd_seq_connect_from(
+                    seq_handle,
+                    port_id,
+                    client,
+                    port);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_NOTEON) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_NOTEON,
+                              event->data.note.channel,
+                              event->data.note.note,
+                              event->data.note.velocity,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_NOTEOFF) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_NOTEOFF,
+                              event->data.note.channel,
+                              event->data.note.note,
+                              event->data.note.velocity,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_CONTROLLER) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_CONTROLLER,
+                              event->data.control.channel,
+                              event->data.control.param,
+                              event->data.control.value,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_PGMCHANGE) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_PGMCHANGE,
+                              event->data.control.channel,
+                              event->data.control.value,
+                              0,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_PITCHBEND) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_PITCHBEND,
+                              event->data.control.channel,
+                              event->data.control.value,
+                              0,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_CHANPRESS) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_CHANPRESS,
+                              event->data.control.channel,
+                              event->data.control.value,
+                              0,
+                              0);
+            }
+        }
+        else if (event->type == SND_SEQ_EVENT_KEYPRESS) {
+            if (event_callback != NULL) {
+                event_callback(SND_SEQ_EVENT_KEYPRESS,
+                              event->data.note.channel,
+                              event->data.note.note,
+                              event->data.note.velocity,
+                              0);
+            }
         }
         count++;
     }

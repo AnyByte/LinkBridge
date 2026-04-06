@@ -13,6 +13,16 @@ from aalink import Link
 BPM = 120
 PPQN = 24  # Pulses Per Quarter Note
 
+# ALSA MIDI Event Types (from alsa/asoundlib.h)
+class MidiEventType:
+    NOTEON = 6
+    NOTEOFF = 7
+    CONTROLLER = 10
+    PGMCHANGE = 11
+    PITCHBEND = 13
+    CHANPRESS = 14
+    KEYPRESS = 27
+
 # Global state
 running = True
 midi_lib = None
@@ -20,6 +30,29 @@ tick_interval = None
 
 # use float BPM with 0.1 precision
 current_bpm = float(BPM)
+
+# Define callback function type: void callback(int event_type, int channel, int param1, int param2, int param3)
+MIDI_EVENT_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
+
+def midi_event_callback(event_type, channel, param1, param2, param3):
+    """Callback function that receives MIDI events from C library and logs them."""
+    # Channels are 0-indexed in C, but we display 1-indexed for users
+    display_channel = channel + 1
+    
+    if event_type == MidiEventType.NOTEON:
+        print(f"[Python] [MIDI IN] NOTE ON  - Channel: {display_channel}, Note: {param1}, Velocity: {param2}")
+    elif event_type == MidiEventType.NOTEOFF:
+        print(f"[Python] [MIDI IN] NOTE OFF - Channel: {display_channel}, Note: {param1}, Velocity: {param2}")
+    elif event_type == MidiEventType.CONTROLLER:
+        print(f"[Python] [MIDI IN] CC       - Channel: {display_channel}, Controller: {param1}, Value: {param2}")
+    elif event_type == MidiEventType.PGMCHANGE:
+        print(f"[Python] [MIDI IN] PROG CHG - Channel: {display_channel}, Program: {param1}")
+    elif event_type == MidiEventType.PITCHBEND:
+        print(f"[Python] [MIDI IN] PITCH BND - Channel: {display_channel}, Value: {param1} (range -8192 to 8191)")
+    elif event_type == MidiEventType.CHANPRESS:
+        print(f"[Python] [MIDI IN] AFTERTOUCH - Channel: {display_channel}, Value: {param1}")
+    elif event_type == MidiEventType.KEYPRESS:
+        print(f"[Python] [MIDI IN] POLY AFTERTOUCH - Channel: {display_channel}, Note: {param1}, Value: {param2}")
 
 def change_tempo(new_bpm):
     """Change the tempo of the MIDI clock (applies to the C library).
@@ -67,15 +100,15 @@ def main():
     lib_path = os.path.join(os.path.dirname(__file__), 'liblinkbridge.so')
     
     if not os.path.exists(lib_path):
-        print(f"Error: Library not found at {lib_path}")
-        print("Please compile the library first:")
-        print("  gcc -shared -fPIC -o liblinkbridge.so midi_clock_lib.c -lasound")
+        print(f"[Python] Error: Library not found at {lib_path}")
+        print("[Python] Please compile the library first:")
+        print("[Python]   gcc -shared -fPIC -o liblinkbridge.so midi_clock_lib.c -lasound")
         return 1
     
     try:
         midi_lib = ctypes.CDLL(lib_path)
     except OSError as e:
-        print(f"Error loading library: {e}")
+        print(f"[Python] Error loading library: {e}")
         return 1
     
     # Define function prototypes
@@ -93,6 +126,13 @@ def main():
     midi_lib.midi_set_tempo.restype = ctypes.c_int
     midi_lib.midi_set_tempo.argtypes = [ctypes.c_int]
     
+    # Setup event callback
+    midi_lib.midi_register_event_callback.restype = None
+    midi_lib.midi_register_event_callback.argtypes = [MIDI_EVENT_CALLBACK]
+    
+    # Create a persistent reference to the callback to prevent garbage collection
+    callback_func = MIDI_EVENT_CALLBACK(midi_event_callback)
+    
     print("[Python] Python MIDI Clock Generator")
     print("[Python] ============================")
     print(f"[Python] BPM: {BPM}, PPQN: {PPQN}")
@@ -103,6 +143,9 @@ def main():
     if midi_lib.midi_init() < 0:
         print("[Python] Error: Failed to initialize MIDI")
         return 1
+    
+    # Register the event callback
+    midi_lib.midi_register_event_callback(callback_func)
 
     # Set tempo in the C queue to match Python BPM (send tenths as int)
     if midi_lib.midi_set_tempo(int(round(current_bpm * 10.0))) < 0:
