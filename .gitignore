@@ -5,3 +5,5 @@ __pycache__/
 *.py[cod]
 build/
 dist/
+assets/LinkBridge.iconset/
+assets/icon-1024.png
