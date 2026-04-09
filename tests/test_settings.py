@@ -40,3 +40,29 @@ def test_load_recovers_from_corrupt_json(tmp_path: Path):
     assert not settings_file.exists()
     corrupt_files = list(tmp_path.glob("settings.json.corrupt-*"))
     assert len(corrupt_files) == 1
+
+
+def test_load_recovers_from_non_object_json(tmp_path: Path):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("[]", encoding="utf-8")  # valid JSON, wrong shape
+
+    s = Settings.load(settings_file)
+
+    assert s.last_device is None
+    assert s.start_stop_enabled is False
+    # Should also be quarantined like other corrupt files.
+    assert not settings_file.exists()
+    corrupt_files = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(corrupt_files) == 1
+
+
+def test_load_coerces_non_string_last_device_to_none(tmp_path: Path):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(
+        '{"last_device": 42, "start_stop_enabled": true}', encoding="utf-8"
+    )
+
+    s = Settings.load(settings_file)
+
+    assert s.last_device is None  # 42 is not a str — coerced to None
+    assert s.start_stop_enabled is True

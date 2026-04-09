@@ -26,11 +26,15 @@ class Settings:
             return cls()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError(f"expected JSON object, got {type(data).__name__}")
+            raw_last_device = data.get("last_device")
+            last_device = raw_last_device if isinstance(raw_last_device, str) else None
             return cls(
-                last_device=data.get("last_device"),
+                last_device=last_device,
                 start_stop_enabled=bool(data.get("start_stop_enabled", False)),
             )
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, ValueError) as e:
             corrupt_path = path.with_suffix(path.suffix + f".corrupt-{int(time.time())}")
             try:
                 path.rename(corrupt_path)
