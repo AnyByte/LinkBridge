@@ -1,0 +1,55 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create venv and install dependencies
+        run: |
+          python3.11 -m venv venv
+          venv/bin/pip install --upgrade pip
+          venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests (sanity check before building)
+        run: venv/bin/pytest -v
+
+      - name: Build LinkBridge.app
+        run: ./scripts/build_app.sh
+
+      - name: Package .app as a zip with ditto
+        run: |
+          cd dist
+          ditto -c -k --keepParent LinkBridge.app "LinkBridge-${{ github.ref_name }}.zip"
+          ls -la
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "LinkBridge ${{ github.ref_name }}" \
+            --notes "Automated build of ${{ github.ref_name }}.
+
+          The bundled \`.app\` is unsigned. On first launch macOS Gatekeeper will block it — right-click \`LinkBridge.app\` in Finder → **Open** → confirm the warning, then launch normally afterwards.
+
+          See the README for usage and the Rekordbox workflow notes." \
+            --draft \
+            "dist/LinkBridge-${{ github.ref_name }}.zip"
