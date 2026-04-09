@@ -9,6 +9,8 @@ import sys
 import threading
 from pathlib import Path
 
+import mido
+
 from linkbridge import midi_output
 from linkbridge.app import MenuBarApp
 from linkbridge.clock_engine import ClockEngine, ClockState
@@ -40,7 +42,7 @@ def _configure_logging() -> None:
     root.addHandler(console_handler)
 
 
-def _resolve_initial_device(settings: Settings):
+def _resolve_initial_device(settings: Settings) -> mido.ports.BaseOutput | None:
     """Return an opened mido output port, or None if nothing is available."""
     log = logging.getLogger(__name__)
     try:
@@ -57,10 +59,17 @@ def _resolve_initial_device(settings: Settings):
         try:
             return midi_output.open_output(settings.last_device)
         except Exception as e:
-            log.warning("failed to reopen last device '%s': %s", settings.last_device, e)
+            log.warning(
+                "failed to reopen last device '%s', falling back: %s",
+                settings.last_device,
+                e,
+            )
 
     fallback = available[0]
-    log.info("falling back to first available MIDI output: %s", fallback)
+    if settings.last_device:
+        log.info("last device unavailable, opening: %s", fallback)
+    else:
+        log.info("no last device in settings, opening: %s", fallback)
     try:
         return midi_output.open_output(fallback)
     except Exception as e:
@@ -92,8 +101,22 @@ def main() -> int:
         clock_engine=clock_engine,
         link_monitor=link_monitor,
     )
-    app.run()
-    log.info("LinkBridge exited")
+    try:
+        app.run()
+    finally:
+        # Normal exit goes through MenuBarApp._on_quit_clicked which already
+        # called these. Both stop() methods are idempotent so calling them
+        # again on a clean shutdown is safe; the try/except guards an
+        # unexpected exit from app.run().
+        try:
+            link_monitor.stop()
+        except Exception as e:
+            log.warning("teardown: link monitor stop failed: %s", e)
+        try:
+            clock_engine.stop()
+        except Exception as e:
+            log.warning("teardown: clock engine stop failed: %s", e)
+        log.info("LinkBridge exited")
     return 0
 
 
