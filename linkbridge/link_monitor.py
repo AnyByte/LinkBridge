@@ -17,6 +17,8 @@ from linkbridge.clock_engine import ClockState
 
 log = logging.getLogger(__name__)
 
+START_TIMEOUT_SECONDS = 5.0
+
 
 class LinkMonitor:
     def __init__(self, state: ClockState, initial_bpm: float = 120.0, quantum: float = 4.0) -> None:
@@ -31,12 +33,19 @@ class LinkMonitor:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        # Reset readiness so a previous lifecycle's signal can't satisfy this start.
+        self._ready.clear()
         self._thread = threading.Thread(
             target=self._run, name="LinkBridge-Link", daemon=True
         )
         self._thread.start()
-        self._ready.wait(timeout=5.0)
-        log.info("link monitor started")
+        if not self._ready.wait(timeout=START_TIMEOUT_SECONDS):
+            log.error(
+                "link monitor did not become ready within %.1f s — proceeding anyway",
+                START_TIMEOUT_SECONDS,
+            )
+        else:
+            log.info("link monitor started")
 
     def stop(self) -> None:
         loop = self._loop
@@ -50,9 +59,17 @@ class LinkMonitor:
             except Exception as e:
                 log.warning("link disable failed: %s", e)
             loop.stop()
-        loop.call_soon_threadsafe(_shutdown)
+        try:
+            loop.call_soon_threadsafe(_shutdown)
+        except RuntimeError as e:
+            # Loop is already closed (e.g. stop() called twice). Nothing to do.
+            log.debug("stop() called on closed loop: %s", e)
         if self._thread is not None:
             self._thread.join(timeout=2.0)
+        # Clear references so a subsequent start() can run cleanly.
+        self._loop = None
+        self._thread = None
+        self._link = None
         log.info("link monitor stopped")
 
     # ----- internals -----
@@ -84,11 +101,24 @@ class LinkMonitor:
         self._ready.set()
 
     def _on_tempo(self, bpm: float) -> None:
-        with self.state.lock:
-            self.state.set_bpm(float(bpm))
+        # Guard against non-positive BPM — set_bpm raises on <= 0, and we must
+        # never let exceptions escape back into aalink's C++ callback dispatcher.
+        if bpm <= 0.0:
+            log.warning("link delivered non-positive BPM %.4f, ignoring", bpm)
+            return
+        try:
+            with self.state.lock:
+                self.state.set_bpm(float(bpm))
+        except Exception as e:
+            log.warning("tempo callback failed: %s", e)
+            return
         log.debug("link tempo -> %.2f", bpm)
 
     def _on_transport(self, playing: bool) -> None:
-        with self.state.lock:
-            self.state.is_playing = bool(playing)
+        try:
+            with self.state.lock:
+                self.state.is_playing = bool(playing)
+        except Exception as e:
+            log.warning("transport callback failed: %s", e)
+            return
         log.info("link transport -> %s", "PLAY" if playing else "STOP")
