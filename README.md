@@ -60,16 +60,32 @@ GitHub Releases ship the `.dmg` exclusively.
 - Eject the disk image
 - Launch from `/Applications`
 
-**On first launch:**
+**On first launch (Gatekeeper bypass for unsigned apps):**
 
-- The bundle is **unsigned** (no Apple Developer ID). macOS Gatekeeper
-  may block it the first time — right-click the `.app` in Finder, choose
-  **Open**, confirm the warning, then launch normally afterwards.
-- macOS asks for **local network permission** ("Allow LinkBridge to find
-  devices on local networks?"). Click **Allow**, otherwise Ableton Link
-  cannot discover any peers and the tempo stays at the default 120 BPM
-  forever. The bundle includes a description string explaining what the
-  permission is used for.
+The bundle is **unsigned** (no Apple Developer ID), so macOS Gatekeeper
+on Sequoia (15+) blocks the first launch with a "could not be opened
+because Apple cannot check it for malicious software" dialog. Apple
+removed the older right-click → Open shortcut in Sequoia, so the only
+way through is via System Settings:
+
+1. Double-click `LinkBridge.app` once. It will be blocked — dismiss
+   the dialog.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to the **Security** section. You will see
+   *"LinkBridge was blocked to protect your Mac"* with an
+   **Open Anyway** button on the right.
+4. Click **Open Anyway**, authenticate with Touch ID or your password
+   if prompted, and confirm the follow-up dialog.
+5. LinkBridge launches. Subsequent launches work normally without
+   any prompts.
+
+**Local network permission:**
+
+Right after the first successful launch, macOS asks *"Allow LinkBridge
+to find devices on local networks?"* — click **Allow**. Without this
+permission, Ableton Link cannot discover any peers and the menu bar
+tempo stays at the default 120 BPM forever. The bundle ships a
+description string explaining what the permission is used for.
 
 ## Menu reference
 
