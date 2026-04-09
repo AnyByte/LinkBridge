@@ -19,12 +19,17 @@ OPTIONS = {
         "CFBundleVersion": "2.0.0",
         "CFBundleShortVersionString": "2.0.0",
         "LSUIElement": True,
-        "LSMinimumSystemVersion": "14.0",
+        "LSMinimumSystemVersion": "15.0",
         "NSHighResolutionCapable": True,
     },
-    "packages": ["rumps", "mido", "rtmidi", "aalink", "linkbridge"],
+    "packages": ["rumps", "mido", "rtmidi", "linkbridge"],
     "includes": [
         "logging.handlers",
+    ],
+    "excludes": [
+        "tkinter",
+        "_tkinter",
+        "Tkinter",
     ],
 }
 
