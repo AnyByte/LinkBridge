@@ -1,0 +1,86 @@
+name: release
+
+# Trigger model: this workflow is triggered ONLY by manual dispatch.
+# Click "Run workflow" in the Actions tab on GitHub.com (or run
+#   `gh workflow run release.yml -f version=2.0.1`
+# from the CLI), enter the new version, and the workflow will:
+#   1. Bump version files
+#   2. Commit + tag + push to main
+#   3. Run the test suite
+#   4. Build LinkBridge.app
+#   5. Package as a zip with ditto
+#   6. Create a draft GitHub Release with auto-generated notes
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version (e.g. 2.0.1, 2.1.0). Do NOT prefix with "v".'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0  # full history so auto-generated release notes can diff against the previous tag
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create venv and install dependencies
+        run: |
+          python3.11 -m venv venv
+          venv/bin/pip install --upgrade pip
+          venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests (sanity check)
+        run: venv/bin/pytest -v
+
+      - name: Bump version files
+        run: venv/bin/bump-my-version replace --new-version "${{ inputs.version }}"
+
+      - name: Show diff after bump
+        run: git diff
+
+      - name: Commit, tag, push
+        run: |
+          git add linkbridge/__init__.py setup.py
+          git commit -m "chore: release v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin main
+          git push origin "v${{ inputs.version }}"
+
+      - name: Build LinkBridge.app
+        run: ./scripts/build_app.sh
+
+      - name: Package .app as a zip with ditto
+        run: |
+          cd dist
+          ditto -c -k --keepParent LinkBridge.app "LinkBridge-v${{ inputs.version }}.zip"
+          ls -la
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --repo "${{ github.repository }}" \
+            --title "LinkBridge v${{ inputs.version }}" \
+            --generate-notes \
+            --draft \
+            "dist/LinkBridge-v${{ inputs.version }}.zip"

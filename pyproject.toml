@@ -1,0 +1,25 @@
+# Project metadata used only by tooling — LinkBridge itself is built via setup.py + py2app.
+
+[tool.bumpversion]
+current_version = "2.0.0"
+allow_dirty = true
+commit = false
+tag = false
+sign_tags = false
+parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(?:-(?P<pre>[A-Za-z0-9.]+))?'
+serialize = ["{major}.{minor}.{patch}-{pre}", "{major}.{minor}.{patch}"]
+
+[[tool.bumpversion.files]]
+filename = "linkbridge/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "setup.py"
+search = '"CFBundleVersion": "{current_version}"'
+replace = '"CFBundleVersion": "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "setup.py"
+search = '"CFBundleShortVersionString": "{current_version}"'
+replace = '"CFBundleShortVersionString": "{new_version}"'
