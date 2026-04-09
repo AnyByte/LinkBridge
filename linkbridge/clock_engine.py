@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 
 import mido
@@ -49,11 +50,10 @@ class ClockEngine:
         clock=None,
         sleeper=None,
     ) -> None:
-        import time as _time
         self.state = state
-        self._clock = clock or _time.monotonic
-        self._sleeper = sleeper or _time.sleep
-        self._running = False
+        self._clock = clock or time.monotonic
+        self._sleeper = sleeper or time.sleep
+        self._running = threading.Event()
         self._thread: threading.Thread | None = None
         self._next_tick_time: float = 0.0
         self._prev_is_playing: bool = False
@@ -108,7 +108,7 @@ class ClockEngine:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
-        self._running = True
+        self._running.set()
         self._next_tick_time = self._clock()
         self._prev_is_playing = False
         self._thread = threading.Thread(
@@ -118,25 +118,23 @@ class ClockEngine:
         log.info("clock thread started")
 
     def stop(self) -> None:
-        self._running = False
+        self._running.clear()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
-        # Final cleanup: if transport was playing and toggle is on, send STOP.
+        # Capture port reference and null state.midi_out atomically under one
+        # lock, so a menu thread can't swap a new port in between read and null.
         with self.state.lock:
             port = self.state.midi_out
             should_send_stop = (
                 self.state.start_stop_enabled and self.state.is_playing and port is not None
             )
+            self.state.midi_out = None
         if should_send_stop:
             try:
                 port.send(mido.Message("stop"))
                 log.info("sent final MIDI STOP on shutdown")
             except Exception as e:
                 log.warning("final stop send failed: %s", e)
-        # Close and release the port.
-        with self.state.lock:
-            port = self.state.midi_out
-            self.state.midi_out = None
         if port is not None:
             try:
                 port.close()
@@ -146,7 +144,7 @@ class ClockEngine:
 
     def _run(self) -> None:
         try:
-            while self._running:
+            while self._running.is_set():
                 self._tick_once()
         except Exception:
             log.exception("clock thread crashed")

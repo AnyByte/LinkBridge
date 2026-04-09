@@ -241,6 +241,26 @@ def test_send_failure_nulls_midi_out_and_keeps_running():
     engine._tick_once()
 
 
+def test_transport_send_failure_nulls_midi_out_and_skips_clock():
+    clock = FakeClock()
+    sleeper = FakeSleeper(clock)
+    sink = FakeSink()
+    sink.fail_with = IOError("unplugged")
+    state = _make_state(sink, is_playing=True, start_stop_enabled=True)
+    engine = ClockEngine(state, clock=clock, sleeper=sleeper)
+    engine._next_tick_time = clock()
+    engine._prev_is_playing = False  # forces transport edge on first tick
+
+    engine._tick_once()  # transport send raises, port is dropped, clock skipped
+
+    with state.lock:
+        assert state.midi_out is None
+    # The failing send was attempted but never recorded by FakeSink.
+    assert sink.sent == []
+    # Subsequent ticks must not raise (port is None).
+    engine._tick_once()
+
+
 def test_start_and_stop_real_thread_streams_clock():
     sink = FakeSink()
     state = _make_state(sink, bpm=240.0)  # fast so the test is quick
@@ -265,7 +285,7 @@ def test_run_sets_clock_crashed_on_unhandled_exception():
         raise RuntimeError("simulated")
     engine._tick_once = boom  # type: ignore[assignment]
 
-    engine._running = True
+    engine._running.set()
     engine._run()  # runs on current thread until exception
 
     with state.lock:
