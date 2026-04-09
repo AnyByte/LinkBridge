@@ -15,8 +15,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [v2.0.0](https://github.com/AnyByte/LinkBridge/releases/tag/v2.0.0) — 2026-04-09 — macOS port
 
 Initial macOS port release. Replaces the original Linux/ALSA implementation
-with a pure-Python macOS menu bar app. The Linux sources are archived under
-`legacy/` and are no longer maintained.
+with a pure-Python macOS menu bar app. The pre-port Linux sources remain
+available in git history at commit
+[`33d8e36`](https://github.com/AnyByte/LinkBridge/tree/33d8e36) and earlier.
 
 ### What's Changed
 

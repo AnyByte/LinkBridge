@@ -234,10 +234,10 @@ The CI will then:
 - Bump the version strings in `linkbridge/__init__.py` and `setup.py`
 - Commit and tag the bump on `main` (`v2.1.0`)
 - Run the test suite
-- Build `LinkBridge.app` and zip it via `ditto`
+- Build `LinkBridge.app` and package it as a `.dmg` via `hdiutil`
 - Create a **draft** GitHub Release with auto-generated notes (built from
-  the conventional-commit history since the previous tag) and the
-  `LinkBridge-v2.1.0.zip` attached
+  the pull request history since the previous tag) and the
+  `LinkBridge-v2.1.0.dmg` attached
 
 Find the draft release on the
 [Releases page](https://github.com/AnyByte/LinkBridge/releases), edit the
@@ -257,26 +257,14 @@ release section to [`CHANGELOG.md`](CHANGELOG.md) via
 from the pull requests merged since the previous tag using GitHub's
 release-notes API.
 
-## Regenerating the app icon
+## Original Linux implementation
 
-The icon source is `assets/icon.png` (1024×1024). To rebuild the
-`assets/LinkBridge.icns` file from a fresh source PNG:
-
-```bash
-.venv-probe/bin/pip install Pillow  # or any venv with Pillow available
-python3 scripts/build_icon.py
-```
-
-The script flood-fills the white background to transparent, crops to the
-non-transparent bbox, generates all 10 macOS iconset sizes, and runs
-`iconutil` to produce the final `.icns`.
-
-## Legacy Linux implementation
-
-The original ALSA / C Linux implementation lives in `legacy/` for
-reference and is not maintained. If you want to run that on Linux, the
-build commands are at the top of `legacy/midi_clock_lib.c` — but the
-macOS port in this branch is the only thing actively developed.
+This project began as a Linux/ALSA application. The pre-port code is
+preserved in git history at commit
+[`33d8e36`](https://github.com/AnyByte/LinkBridge/tree/33d8e36) and any
+earlier ancestor. To run the Linux version, check out that commit:
+`git checkout 33d8e36`. The macOS port is the only thing actively
+developed from v2.0.0 onwards.
 
 ## License
 
