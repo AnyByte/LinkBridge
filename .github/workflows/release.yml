@@ -1,15 +1,17 @@
 name: release
 
-# Trigger model: this workflow is triggered ONLY by manual dispatch.
+# Trigger model: this workflow runs ONLY by manual dispatch.
 # Click "Run workflow" in the Actions tab on GitHub.com (or run
 #   `gh workflow run release.yml -f version=2.0.1`
 # from the CLI), enter the new version, and the workflow will:
-#   1. Bump version files
-#   2. Commit + tag + push to main
-#   3. Run the test suite
-#   4. Build LinkBridge.app
-#   5. Package as a zip with ditto
-#   6. Create a draft GitHub Release with auto-generated notes
+#   1. Run the test suite
+#   2. Bump version files (linkbridge/__init__.py, setup.py)
+#   3. Generate release notes from PRs merged since the previous tag
+#   4. Prepend the new section to CHANGELOG.md
+#   5. Commit (version bump + changelog) + tag + push to main
+#   6. Build LinkBridge.app
+#   7. Package as a zip with ditto
+#   8. Create a draft GitHub Release with the same notes and the .zip
 on:
   workflow_dispatch:
     inputs:
@@ -30,7 +32,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0  # full history so auto-generated release notes can diff against the previous tag
+          fetch-depth: 0     # full history so we can see previous tags
+          fetch-tags: true   # explicitly pull tags so `git describe` works
 
       - name: Configure git identity
         run: |
@@ -54,12 +57,43 @@ jobs:
       - name: Bump version files
         run: venv/bin/bump-my-version replace --new-version "${{ inputs.version }}"
 
-      - name: Show diff after bump
+      - name: Show diff after version bump
         run: git diff
+
+      - name: Generate release notes from previous tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "previous tag: ${PREV_TAG:-<none>}"
+
+          if [[ -z "$PREV_TAG" ]]; then
+            gh api -X POST "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="v${{ inputs.version }}" \
+              -f target_commitish="main" \
+              --jq '.body' > release-notes.md
+          else
+            gh api -X POST "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="v${{ inputs.version }}" \
+              -f previous_tag_name="$PREV_TAG" \
+              -f target_commitish="main" \
+              --jq '.body' > release-notes.md
+          fi
+
+          echo "--- generated notes ---"
+          cat release-notes.md
+          echo "--- end notes ---"
+
+      - name: Prepend new section to CHANGELOG.md
+        run: |
+          venv/bin/python scripts/update_changelog.py \
+            "${{ inputs.version }}" \
+            "$(date -u +%Y-%m-%d)" \
+            release-notes.md
 
       - name: Commit, tag, push
         run: |
-          git add linkbridge/__init__.py setup.py
+          git add linkbridge/__init__.py setup.py CHANGELOG.md
           git commit -m "chore: release v${{ inputs.version }}"
           git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
           git push origin main
@@ -81,6 +115,6 @@ jobs:
           gh release create "v${{ inputs.version }}" \
             --repo "${{ github.repository }}" \
             --title "LinkBridge v${{ inputs.version }}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             --draft \
             "dist/LinkBridge-v${{ inputs.version }}.zip"

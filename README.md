@@ -233,7 +233,11 @@ gh run watch  # follow the build
 ```
 
 The release workflow uses [`bump-my-version`](https://github.com/callowayproject/bump-my-version)
-under the hood; the file list is in `pyproject.toml`.
+under the hood (file list in `pyproject.toml`) and prepends each new
+release section to [`CHANGELOG.md`](CHANGELOG.md) via
+`scripts/update_changelog.py`. The changelog entries are auto-generated
+from the pull requests merged since the previous tag using GitHub's
+release-notes API.
 
 ## Regenerating the app icon
 
