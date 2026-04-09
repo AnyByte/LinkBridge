@@ -29,7 +29,7 @@ with a pure-Python macOS menu bar app. The Linux sources are archived under
 - 24 ppqn clock generator with drift-compensated absolute-time scheduling
 - Reactive Ableton Link integration via `aalink` callbacks (no polling)
 - Settings persistence at `~/Library/Application Support/LinkBridge/settings.json`
-- Distributed as a double-clickable `LinkBridge.app` bundle (custom icon, `LSUIElement`)
+- Distributed as a `.dmg` disk image containing the `LinkBridge.app` bundle and a drag-to-install Applications shortcut (custom icon, `LSUIElement`)
 - 22 unit tests covering Settings, MidiOutput, and ClockEngine
 - py2app build via `./scripts/build_app.sh`
 - GitHub Actions CI: tests on every PR, releases via `workflow_dispatch`

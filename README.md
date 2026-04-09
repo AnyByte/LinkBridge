@@ -39,19 +39,37 @@ pip install -r requirements-dev.txt
 ./scripts/build_app.sh
 ```
 
-The bundle is produced at `dist/LinkBridge.app`. Drag it to `/Applications`
-or run it in place.
+The bundle is produced at `dist/LinkBridge.app`. To package it as a
+distributable disk image:
+
+```bash
+./scripts/build_dmg.sh 2.0.0
+```
+
+This produces `dist/LinkBridge-v2.0.0.dmg` containing `LinkBridge.app`
+plus a symlink to `/Applications` for drag-to-install. Releases on
+GitHub Releases ship the `.dmg` exclusively.
+
+**Installation flow:**
+
+- Download `LinkBridge-v<version>.dmg` from the
+  [latest release](https://github.com/AnyByte/LinkBridge/releases/latest)
+- Double-click the `.dmg` to mount it
+- Drag `LinkBridge.app` onto the `Applications` shortcut in the disk
+  image window
+- Eject the disk image
+- Launch from `/Applications`
 
 **On first launch:**
 
+- The bundle is **unsigned** (no Apple Developer ID). macOS Gatekeeper
+  may block it the first time — right-click the `.app` in Finder, choose
+  **Open**, confirm the warning, then launch normally afterwards.
 - macOS asks for **local network permission** ("Allow LinkBridge to find
   devices on local networks?"). Click **Allow**, otherwise Ableton Link
   cannot discover any peers and the tempo stays at the default 120 BPM
   forever. The bundle includes a description string explaining what the
   permission is used for.
-- The bundle is **unsigned** (no Apple Developer ID). If macOS Gatekeeper
-  blocks it, right-click the `.app` in Finder, choose **Open**, confirm
-  the warning, then launch normally afterwards.
 
 ## Menu reference
 

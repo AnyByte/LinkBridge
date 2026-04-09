@@ -102,11 +102,8 @@ jobs:
       - name: Build LinkBridge.app
         run: ./scripts/build_app.sh
 
-      - name: Package .app as a zip with ditto
-        run: |
-          cd dist
-          ditto -c -k --keepParent LinkBridge.app "LinkBridge-v${{ inputs.version }}.zip"
-          ls -la
+      - name: Package .app as a .dmg with hdiutil
+        run: ./scripts/build_dmg.sh "${{ inputs.version }}"
 
       - name: Create draft GitHub Release
         env:
@@ -117,4 +114,4 @@ jobs:
             --title "LinkBridge v${{ inputs.version }}" \
             --notes-file release-notes.md \
             --draft \
-            "dist/LinkBridge-v${{ inputs.version }}.zip"
+            "dist/LinkBridge-v${{ inputs.version }}.dmg"
