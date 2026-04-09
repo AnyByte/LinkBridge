@@ -1,3 +1,5 @@
 *.so
 venv/
 TODO
+__pycache__/
+*.py[cod]
