@@ -201,6 +201,40 @@ clocks / fake MIDI sinks — no hardware or Link peer required. The Link
 monitor and the menu bar app are validated by manual smoke tests against
 real hardware (the smoke procedure is documented in the project plan).
 
+## Releasing a new version
+
+Releases are cut by a single click in the **GitHub Actions** tab — no local
+commands or git tagging required.
+
+1. Go to https://github.com/AnyByte/LinkBridge/actions/workflows/release.yml
+2. Click **Run workflow**
+3. Type the new version (e.g. `2.1.0`, no `v` prefix)
+4. Click **Run workflow**
+
+The CI will then:
+
+- Bump the version strings in `linkbridge/__init__.py` and `setup.py`
+- Commit and tag the bump on `main` (`v2.1.0`)
+- Run the test suite
+- Build `LinkBridge.app` and zip it via `ditto`
+- Create a **draft** GitHub Release with auto-generated notes (built from
+  the conventional-commit history since the previous tag) and the
+  `LinkBridge-v2.1.0.zip` attached
+
+Find the draft release on the
+[Releases page](https://github.com/AnyByte/LinkBridge/releases), edit the
+notes if you want, then click **Publish release**.
+
+You can also trigger the workflow from a terminal:
+
+```bash
+gh workflow run release.yml -f version=2.1.0
+gh run watch  # follow the build
+```
+
+The release workflow uses [`bump-my-version`](https://github.com/callowayproject/bump-my-version)
+under the hood; the file list is in `pyproject.toml`.
+
 ## Regenerating the app icon
 
 The icon source is `assets/icon.png` (1024×1024). To rebuild the
