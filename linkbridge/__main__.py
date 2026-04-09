@@ -1,7 +1,7 @@
-"""Entry point for `python -m linkbridge`. Wiring lives in Task 8."""
+"""Entry point for `python -m linkbridge`. The full wiring is added later."""
 
 def main() -> int:
-    raise NotImplementedError("filled in by Task 8")
+    raise NotImplementedError("linkbridge entry point not yet implemented")
 
 
 if __name__ == "__main__":
