@@ -2,6 +2,8 @@
 
 import threading
 
+import pytest
+
 from linkbridge.clock_engine import ClockState
 
 
@@ -21,3 +23,11 @@ def test_set_bpm_recomputes_tick_interval():
     assert s.bpm == 140.0
     expected = 1.0 / (140.0 / 60.0 * 24)
     assert abs(s.tick_interval - expected) < 1e-12
+
+
+def test_set_bpm_rejects_non_positive():
+    s = ClockState(lock=threading.Lock())
+    with pytest.raises(ValueError, match="must be positive"):
+        s.set_bpm(0.0)
+    with pytest.raises(ValueError, match="must be positive"):
+        s.set_bpm(-60.0)

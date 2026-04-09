@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Optional
 
 import mido
 
@@ -26,10 +25,12 @@ class ClockState:
     tick_interval: float = field(default_factory=lambda: _interval_for_bpm(120.0))
     is_playing: bool = False
     start_stop_enabled: bool = False
-    midi_out: Optional[mido.ports.BaseOutput] = None
+    midi_out: mido.ports.BaseOutput | None = None
     clock_crashed: bool = False
 
     def set_bpm(self, bpm: float) -> None:
         """Update bpm and recompute tick_interval. Caller must hold the lock."""
+        if bpm <= 0.0:
+            raise ValueError(f"BPM must be positive, got {bpm!r}")
         self.bpm = bpm
         self.tick_interval = _interval_for_bpm(bpm)
