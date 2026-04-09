@@ -70,7 +70,10 @@ class MenuBarApp(rumps.App):
             current_port = self.state.midi_out
         current_name = getattr(current_port, "name", None) if current_port else None
 
-        self._device_menu.clear()
+        # rumps creates the underlying NSMenu lazily on first add(); only
+        # call clear() once it exists, otherwise removeAllItems() crashes.
+        if self._device_menu._menu is not None:
+            self._device_menu.clear()
         if not outputs:
             self._device_menu.add(rumps.MenuItem(MENU_NO_DEVICE))
         else:
